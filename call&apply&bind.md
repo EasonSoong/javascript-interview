@@ -74,3 +74,78 @@ Function.prototype._call = function(ctx, ...parameters) {
   return res;
 };
 ```
+
+到这里我们已经完成的差不多了，但是这个时候，如果面试官问你：你这个都是用 ES6 实现的，能用 ES5 实现吗？当然能！代码示例如下：
+
+```
+Function.prototype._call = function(ctx) {
+  if (typeof ctx === 'object') {
+    ctx = ctx || window;
+  } else {
+    ctx = Object.create(null);
+  }
+  var keys = Object.keys(ctx);
+
+  // 构造参数
+  const args = [];
+  for (var i = 1; i < arguments.length; i++) {
+    args.push('arguments[' + i + ']');
+  }
+  // 构造唯一 key 值
+  var maxKeyLen = 0;
+  for (var i = 0; i < keys.length; i++) {
+    maxKeyLen = Math.max(maxKeyLen, keys[i].length);
+  }
+  var uniqueKey = 'x'.repeat(maxKeyLen + 1);
+  ctx[uniqueKey] = this;
+  var res = eval('ctx[uniqueKey](' + args + ')');
+  delete ctx[uniqueKey];
+  return res;
+};
+```
+
+## apply 原生实现
+
+apply 和 call 的原生实现类似，代码示例如下
+
+```
+// ES5
+Function.prototype._apply = function(ctx, parameters) {
+  if (typeof ctx === 'object') {
+    ctx = ctx || window;
+  } else {
+    ctx = Object.create(null);
+  }
+  
+  var args = [];
+  for (var i = 1; i < parameters.length; i++) {
+    args.push('parameters[' + i + ']');
+  }
+
+  var maxKeyLen = 0;
+  var keys = Object.keys(ctx);
+  for (var i = 0; i < keys.length; i++) {
+    maxKeyLen = Math.max(maxKeyLen, keys[i].length);
+  }
+  var uniqueKey = 'x'.repeat(maxKeyLen);
+  ctx[uniqueKey] = this;
+  var res = eval('ctx[uniqueKey](' + args + ')');
+  delete ctx[uniqueKey];
+  return res;
+};
+
+// ES6
+Function.prototype._apply = function(ctx, parameters) {
+  if (typeof ctx === 'object') {
+    ctx = ctx || window;
+  } else {
+    ctx = Object.create(null);
+  }
+
+  const key = Symbol();
+  ctx[key] = this;
+  const res = ctx[key](...parameters);
+  delete ctx[key];
+  return res;
+};
+```
