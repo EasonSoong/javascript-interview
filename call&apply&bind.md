@@ -149,3 +149,22 @@ Function.prototype._apply = function(ctx, parameters) {
   return res;
 };
 ```
+
+## bind 的原生实现
+```
+Function.prototype._bind = function(ctx, ...args1) {
+  const that = this;
+  const fNop = function() {};
+  const bindFn = function(...args2) {
+    that.apply(
+      this instanceof that ? this : ctx,
+      [...args1, ...args2]
+    );
+  };
+  if (this.prototype) {
+    fNop.prototype = this.prototype;
+  }
+  bindFn.prototype = new fNop();
+  return bindFn;
+}
+```
