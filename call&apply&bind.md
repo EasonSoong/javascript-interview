@@ -149,3 +149,232 @@ Function.prototype._apply = function(ctx, parameters) {
   return res;
 };
 ```
+
+## bind 的原生实现
+
+先看一下 bind 的用法：bind 用于改变 this 的指向，并且返回绑定 this 的方法。
+
+```
+const obj1 = {
+  name: 'obj1',
+  fn: function() {
+    console.log(this.name);
+  }
+};
+
+const obj2 = {
+  name: 'obj2',
+};
+
+const bindFn = obj1.fn.bind(obj2);
+bindFn(); // obj2
+```
+
+根据上面的示例，原生实现如下：
+
+```
+Function.prototype._bind = function(ctx) {
+  // 保存实际调用的方法
+  const self = this;
+  const bindFn = function() {
+    return self.apply(ctx);
+  }
+  return bindFn;
+}
+
+const obj1 = {
+  name: 'obj1',
+  fn: function() {
+    console.log(this.name);
+  }
+};
+
+const obj2 = {
+  name: 'obj2',
+};
+
+const bindFn = obj1.fn._bind(obj2);
+bindFn(); // obj2
+```
+
+到这里我们实现了 bind 的第一个特性，bind 还支持传入其他参数，与 call 相同，可以传入多个参数。（apply 是传入一个数组）
+
+```
+const obj1 = {
+  name: 'obj1',
+  fn: function(age, sex) {
+    console.log(this.name, age, sex);
+  }
+};
+
+const obj2 = {
+  name: 'obj2',
+};
+
+const bindFn = obj1.fn.bind(obj2, 10);
+bindFn('man'); // obj2 10 man
+```
+
+支持传参版本的 bind 实现如下：
+
+```
+Function.prototype._bind = function(ctx, ...args1) {
+  const self = this;
+  const bindFn = function(...args2) {
+    return self.apply(ctx, [...args1, ...args2]);
+  }
+  return bindFn;
+}
+
+const obj1 = {
+  name: 'obj1',
+  fn: function(age, sex) {
+    console.log(this.name, age, sex);
+  }
+};
+
+const obj2 = {
+  name: 'obj2',
+};
+
+const bindFn = obj1.fn._bind(obj2, 10);
+bindFn('man'); // obj2 10 man
+```
+
+完成了对传参的支持，bind 还有一个特性，bind 后的方法可以作为构造函数，使用 new 操作符调用，此时 bind 绑定的 this 会失效。
+
+```
+const obj1 = {
+  name: 'obj1',
+  fn: function(name, age) {
+    this.name = name;
+    this.age = age;
+  }
+};
+
+const obj2 = {
+  name: 'obj2',
+};
+
+const bindFn = obj1.fn.bind(obj2);
+const res = new bindFn('test', 16);
+console.log(obj2.name, res); // obj2 fn {name: "test", age: 16}
+```
+
+下面实现一下这个特性：
+
+```
+Function.prototype._bind = function(ctx, ...args1) {
+  const self = this;
+  const bindFn = function(...args2) {
+    return self.apply(
+      this instanceof bindFn ? this : ctx,
+      [...args1, ...args2]
+    );
+  }
+  return bindFn;
+}
+
+const obj1 = {
+  name: 'obj1',
+  fn: function(name, age) {
+    this.name = name;
+    this.age = age;
+  }
+};
+
+const obj2 = {
+  name: 'obj2',
+};
+
+const bindFn = obj1.fn._bind(obj2);
+const res = new bindFn('test', 16);
+console.log(obj2.name, res); // obj2 bindFn {name: "test", age: 16}
+```
+
+到这里已经差不多完成了，但其实还有一个问题
+
+```
+const obj1 = {
+  name: 'obj1',
+  fn: function(age, sex) {
+    console.log(this.name, age, sex);
+  }
+};
+obj1.fn.prototype.fName = 'obj1_fn';
+
+const obj2 = {
+  name: 'obj2',
+};
+
+const bindFn1 = obj1.fn.bind(obj2, 10, 'boy');
+const res1 = new bindFn1();
+const bindFn2 = obj1.fn._bind(obj2, 10, 'boy');
+const res2 = new bindFn2();
+console.log(res1.fName, res2.fName); // obj1_fn undefined
+```
+
+在使用构造函数返回的对象上，找不到 fName 这个属性了。为了解决这个问题，需要进行原型链的绑定。
+
+```
+Function.prototype._bind = function(ctx, ...args1) {
+  const self = this;
+  const fNop = function() {};
+  const bindFn = function(...args2) {
+    return self.apply(
+      this instanceof bindFn ? this : ctx,
+      [...args1, ...args2]
+    );
+  }
+  if (this.prototype) {
+    fNop.prototype = this.prototype;
+  }
+  bindFn.prototype = new fNop();
+  return bindFn;
+}
+
+const obj1 = {
+  name: 'obj1',
+  fn: function(age, sex) {
+    console.log(this.name, age, sex);
+  }
+};
+obj1.fn.prototype.fName = 'obj1_fn';
+
+const obj2 = {
+  name: 'obj2',
+};
+
+const bindFn1 = obj1.fn.bind(obj2, 10, 'boy');
+const res1 = new bindFn1();
+const bindFn2 = obj1.fn._bind(obj2, 10, 'boy');
+const res2 = new bindFn2();
+console.log(res1.fName, res2.fName); // obj1_fn obj1_fn
+```
+
+到这里就基本完成了，但其实 bind 的标准实现还有许多小的细节这里没有考虑到的，下面有一个考虑比较全面的实现版本。
+
+```
+Function.prototype._bind = function(ctx, ...args1) {
+  // 判断进行绑定的是不是个可执行的方法
+  if (typeof this !== "function") {
+    throw new Error("Function.prototype.bind - what is trying to be bound is not callable");
+  }
+  const self = this;
+  const bindFn = function(...args2) {
+    //把原型链指向要bind操作的函数，也就是原函数。
+    //直接执行时this变得未知，所以加上try
+    try {
+      this.__proto__ = self.prototype;
+    } catch(e) {}
+    const isNew = self.prototype ? this instanceof self : false;
+    return self.apply(
+      isNew ? this : ctx,
+      [...args1, ...args2]
+    );
+  }
+  //bind后的方法是没有原型的，使其与浏览器原生表现一致
+  bindFn.prototype = undefined;
+  return bindFn;
+}
+```
